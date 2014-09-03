@@ -92,15 +92,30 @@
       (foreach chrom in (<compound>-chromatograms comp)
         (set-<chromatogram>-compound! chrom comp)))))
 
+
+;; rules engine
+
+(define (run-rules batch . rules)
+  (define (run flags results rules)
+    (if (null? rules)
+        (values flags results)
+        (let-values ([(name fs rs) ((car rules) batch #f)])
+          (let ([annotated-rules (map (~> list name) rs)])
+            (run (append flags fs) (append results annotated-rules) (cdr rules))))))
+  (run '() '() rules))
+
+
 ;; rules
 
 (define (mean-peak-area batch read-result)
-  (pipe-each (get-comp-meths batch)
-    <compound-method>-name
-    (~> get-comp-instances batch)
-    (~> filter standard-compound?)
-    (~> map get-quant-chroms)
-    flatten
-    <chromatogram>-peak-area
-    mean))
+  (let ([comp-names (map <compound-method>-name (get-comp-meths batch))])
+    (let ([results (map cons comp-names
+                        (pipe-each comp-names
+                          (~> get-comp-instances batch)
+                          (~> filter standard-compound?)
+                          (~> map get-quant-chroms)
+                          flatten
+                          (~> map <chromatogram>-peak-area)
+                          mean))])
+      (values 'mean-peak-area '() results))))
         
