@@ -35,50 +35,50 @@
 
 ;; model
 
-(struct <assay> (name comp-meths))
-(struct <compound-method> (name settings enabled-for-rule? chrom-meths assay))
-(struct <chromatogram-method> (id classifier settings compound-method))
+(struct Assay (name comp-meths))
+(struct CompoundMethod (name settings enabled-for-rule? chrom-meths assay))
+(struct ChromatogramMethod (id classifier settings compound-method))
 
-(struct <batch> (name assay samples))
-(struct <sample> (id name type injection dilution compounds [batch #:mutable]))
-(struct <compound> (id name nom-conc std-dev deviation response use-record? calc-conc
+(struct Batch (name assay samples))
+(struct Sample (id name type injection dilution compounds [batch #:mutable]))
+(struct Compound (id name nom-conc std-dev deviation response use-record? calc-conc
                      attempted-regression? regression-succeeded? found-concentration?
                      chromatograms [sample #:mutable]))
-(struct <chromatogram> (classifier peak-area expected-rt [compound #:mutable]))
+(struct Chromatogram (classifier peak-area expected-rt [compound #:mutable]))
 
 
 ;; model accessors
 
 (define-memoized (get-comp-meths batch)
   (pipe batch
-    (~> <batch>-assay)
-    (~> <assay>-comp-meths)))
+    (~> Batch-assay)
+    (~> Assay-comp-meths)))
 
 (define-memoized (get-comps-by-name batch comp-meth-name)
   (pipe batch
-    <batch>-samples
+    Batch-samples
     (~> map (~> get-sample-comp comp-meth-name))))
 
 (define (is-compound-named comp-name)
   (lambda (comp)
-    (string=? (<compound>-name comp) comp-name)))
+    (string=? (Compound-name comp) comp-name)))
 
 (define-memoized (get-sample-comp comp-name sample)
   (pipe sample
-    (~> <sample>-compounds)
+    (~> Sample-compounds)
     (~> findf (is-compound-named comp-name))))
 
 (define (standard-compound? comp)
-  (standard-sample? (<compound>-sample comp)))
+  (standard-sample? (Compound-sample comp)))
 
 (define-memoized (standard-sample? samp)
-  (string=? (<sample>-type samp) "standard"))
+  (string=? (Sample-type samp) "standard"))
 
 (define (get-quant-chroms comp)
-  (filter is-quant-chrom (<compound>-chromatograms comp)))
+  (filter is-quant-chrom (Compound-chromatograms comp)))
 
 (define (is-quant-chrom chrom)
-  (string=? (<chromatogram>-classifier chrom) "Quant")) ; fix
+  (string=? (Chromatogram-classifier chrom) "Quant")) ; fix
 
 (define (mean xs)
   (if (null? xs)
@@ -86,7 +86,7 @@
       (/ (foldl + 0 xs) (length xs))))
 
 (define-memoized (get-compound-names batch)
-  (map <compound-method>-name (get-comp-meths batch)))
+  (map CompoundMethod-name (get-comp-meths batch)))
 
 
 
@@ -106,12 +106,12 @@
   (connect-parents the-batch))
 
 (define (connect-parents batch)
-  (foreach samp in (<batch>-samples batch)
-    (set-<sample>-batch! samp batch)
-    (foreach comp in (<sample>-compounds samp)
-      (set-<compound>-sample! comp samp)
-      (foreach chrom in (<compound>-chromatograms comp)
-        (set-<chromatogram>-compound! chrom comp)))))
+  (foreach samp in (Batch-samples batch)
+    (set-Sample-batch! samp batch)
+    (foreach comp in (Sample-compounds samp)
+      (set-Compound-sample! comp samp)
+      (foreach chrom in (Compound-chromatograms comp)
+        (set-Chromatogram-compound! chrom comp)))))
 
 ;; rules
 
@@ -122,7 +122,7 @@
            (~> filter standard-compound?)
            (~> map get-quant-chroms)
            flatten
-           (~> map <chromatogram>-peak-area)
+           (~> map Chromatogram-peak-area)
            mean
            (~> cons comp-name))])
     (values 'mean-peak-area '() results)))
