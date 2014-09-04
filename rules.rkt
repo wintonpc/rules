@@ -26,11 +26,18 @@
     [(_ var in xs exp0 exp1 ...)
      #'(for-each (lambda (var) exp0 exp1 ...) xs)]))
 
+(define-syntax (map-each stx)
+  (syntax-case stx (in)
+    [(_ var in xs exp0 exp1 ...)
+     #'(map (lambda (var) exp0 exp1 ...) xs)]))
+
 (define (~> proc . early-args)
   (lambda late-args
     (apply proc (append early-args late-args))))
 
 (define first car)
+
+(define (non-false x) x)
 
 (define cons*
   (case-lambda
@@ -93,10 +100,9 @@
 (define-memoized (standard-sample? samp)
   (string=? (Sample-type samp) "standard"))
 
-
-
-(define (get-quant-chroms comp)
-  (filter is-quant-chrom (Compound-chromatograms comp)))
+(define (get-quant-chrom comp)
+  (let ([chroms (filter is-quant-chrom (Compound-chromatograms comp))])
+    (if (null? chroms) #f chroms)))
 
 (define (is-quant-chrom chrom)
   (string=? (Chromatogram-classifier chrom) "Quant")) ; fix
@@ -170,8 +176,8 @@
          (pipe-each comp-name in (get-compound-names batch)
            (~> get-comps-by-name batch)
            (~> filter standard-compound?)
-           (~> map get-quant-chroms)
-           flatten
+           (~> map get-quant-chrom)
+           (~> filter non-false)
            (~> map Chromatogram-peak-area)
            mean
            (lambda (r) (make-result 'mean-peak-area (make-compound-handle comp-name) r)))])
@@ -179,11 +185,15 @@
 
 (define-rule (peak-area-deviation batch make-result read-result)
   "blah blah blah"
-  (let ([flags
-         (pipe-each comp-name in (get-compound-names batch)
-           (~> read-result 'mean-peak-area)
-           )])
-    (values flags '())))
+  (map-each comp-meth in (get-comp-meths batch)
+    (let ([mean-area (read-result 'mean-peak-area)]
+          [threshold (read-parameter comp-meth "ISAreaDeviationThreshold")]
+          [quant-chrom (get-quant-chrom)])
+      (let ([deviation ()])
+          
+      
+      
+        (values flags '())))))
   
 (pretty-print-columns 120)
 (load-batch)

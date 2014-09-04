@@ -1,0 +1,4 @@
+- (pipe-each x in xs
+    (~> ...)
+    ...)
+  to get x in scope for annotating results
