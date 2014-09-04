@@ -16,24 +16,21 @@
 (define (pipe input . procs)
   (foldl (lambda (p acc) (p acc)) input procs))
 
-#;(define (pipe-each input . procs)
-  (foldl (lambda (p acc) (map p acc)) input procs))
-
 (define-syntax (pipe-each stx)
   (syntax-case stx (in)
     [(_ var in xs tx ...)
      #'(map (lambda (var) (pipe var tx ...)) xs)]))
+
+(define-syntax (foreach stx)
+  (syntax-case stx (in)
+    [(_ var in xs exp0 exp1 ...)
+     #'(for-each (lambda (var) exp0 exp1 ...) xs)]))
 
 (define (~> proc . early-args)
   (lambda late-args
     (apply proc (append early-args late-args))))
 
 (define first car)
-
-(define-syntax (foreach stx)
-  (syntax-case stx (in)
-    [(_ var in xs exp0 exp1 ...)
-     #'(for-each (lambda (var) exp0 exp1 ...) xs)]))
 
 
 ;; model
@@ -57,7 +54,7 @@
     (~> <batch>-assay)
     (~> <assay>-comp-meths)))
 
-(define-memoized (get-comp-instances batch comp-meth-name)
+(define-memoized (get-comps-by-name batch comp-meth-name)
   (pipe batch
     <batch>-samples
     (~> map (~> get-sample-comp comp-meth-name))))
@@ -72,7 +69,10 @@
     (~> findf (is-compound-named comp-name))))
 
 (define (standard-compound? comp)
-  (string=? (<sample>-type (<compound>-sample comp)) "standard"))
+  (standard-sample? (<compound>-sample comp)))
+
+(define-memoized (standard-sample? samp)
+  (string=? (<sample>-type samp) "standard"))
 
 (define (get-quant-chroms comp)
   (filter is-quant-chrom (<compound>-chromatograms comp)))
@@ -118,7 +118,7 @@
 (define (mean-peak-area batch read-result)
   (let ([results
          (pipe-each comp-name in (get-compound-names batch)
-           (~> get-comp-instances batch)
+           (~> get-comps-by-name batch)
            (~> filter standard-compound?)
            (~> map get-quant-chroms)
            flatten
