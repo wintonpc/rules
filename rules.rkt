@@ -32,6 +32,19 @@
 
 (define first car)
 
+(define cons*
+  (case-lambda
+    [(xs) xs]
+    [(h . t) (cons h (apply cons* t))]))
+
+(define-syntax (is-match? stx)
+  (syntax-case stx ()
+    [(_ x pat ...)
+     #'(match x
+         [pat #t]
+         ...
+         [_ #f])]))
+
 
 ;; model
 
@@ -46,6 +59,12 @@
                      chromatograms [sample #:mutable]))
 (struct Chromatogram (classifier peak-area expected-rt [compound #:mutable]))
 
+(struct RuleInfo (id description) #:transparent)
+
+(struct Result (rule-id name handle value) #:transparent)
+(struct Handle (sample compound chromatogram) #:transparent)
+(struct Flag (id text abbreviation category severity) #:transparent)
+(struct Flagged (handle flag rule-id) #:transparent)
 
 ;; model accessors
 
@@ -74,6 +93,8 @@
 (define-memoized (standard-sample? samp)
   (string=? (Sample-type samp) "standard"))
 
+
+
 (define (get-quant-chroms comp)
   (filter is-quant-chrom (Compound-chromatograms comp)))
 
@@ -96,10 +117,25 @@
   (define (run flags results rules)
     (if (null? rules)
         (values flags results)
-        (let-values ([(name fs rs) ((car rules) batch #f)])
-          (let ([annotated-rules (map (~> list name) rs)])
-            (run (append flags fs) (append results annotated-rules) (cdr rules))))))
+        (let* ([rule (car rules)]
+               [info (rule 'reflect)]
+               [rule-id (RuleInfo-id info)])
+          (let-values ([(fs rs) (rule 'run batch
+                                      (lambda (n h v) (Result rule-id n h v))
+                                      (~> lookup-result results))])
+            (run (append flags fs) (append results rs) (cdr rules))))))
   (run '() '() rules))
+
+
+(define (lookup-result results result-name compound-name)
+  (first
+   (filter 
+    (lambda (r)
+      (is-match? r (Result _ (== result-name) (Handle #f (== compound-name) #f) _)))
+    results)))
+
+(define (reflect-rules . rules)
+  (map (lambda (rule) (rule 'reflect)) rules))
 
 (define (load-batch)
   (load "/home/pwinton/git/rules/batch.rkt")
@@ -113,9 +149,23 @@
       (foreach chrom in (Compound-chromatograms comp)
         (set-Chromatogram-compound! chrom comp)))))
 
+(define (make-compound-handle comp-name)
+  (Handle #f comp-name #f))
+
 ;; rules
 
-(define (mean-peak-area batch read-result)
+(define-syntax (define-rule stx)
+  (syntax-case stx ()
+    [(_ (name batch make-result read-result) desc exp0 exp1 ...)
+     #'(define (name . L)
+         (match L
+           ['(reflect) (RuleInfo 'name desc)]
+           [`(run ,batch ,make-result ,read-result)
+            (let ()
+              exp0 exp1 ...)]))]))
+
+(define-rule (mean-peak-area batch make-result read-result)
+  "Calculates the mean quant peak area of standards."
   (let ([results
          (pipe-each comp-name in (get-compound-names batch)
            (~> get-comps-by-name batch)
@@ -124,8 +174,16 @@
            flatten
            (~> map Chromatogram-peak-area)
            mean
-           (~> cons comp-name))])
-    (values 'mean-peak-area '() results)))
+           (lambda (r) (make-result 'mean-peak-area (make-compound-handle comp-name) r)))])
+    (values '() results)))
 
-
-
+(define-rule (peak-area-deviation batch make-result read-result)
+  "blah blah blah"
+  (let ([flags
+         (pipe-each comp-name in (get-compound-names batch)
+           (~> read-result 'mean-peak-area)
+           )])
+    (values flags '())))
+  
+(pretty-print-columns 120)
+(load-batch)
