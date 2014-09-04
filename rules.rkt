@@ -16,12 +16,13 @@
 (define (pipe input . procs)
   (foldl (lambda (p acc) (p acc)) input procs))
 
-(define (pipe-each input . procs)
+#;(define (pipe-each input . procs)
   (foldl (lambda (p acc) (map p acc)) input procs))
 
-(define (~>pipe-each . procs)
-  (lambda (input)
-    (apply pipe-each (cons input procs))))
+(define-syntax (pipe-each stx)
+  (syntax-case stx (in)
+    [(_ var in xs tx ...)
+     #'(map (lambda (var) (pipe var tx ...)) xs)]))
 
 (define (~> proc . early-args)
   (lambda late-args
@@ -84,13 +85,9 @@
       +nan.0
       (/ (foldl + 0 xs) (length xs))))
 
-(define (connect-parents batch)
-  (foreach samp in (<batch>-samples batch)
-    (set-<sample>-batch! samp batch)
-    (foreach comp in (<sample>-compounds samp)
-      (set-<compound>-sample! comp samp)
-      (foreach chrom in (<compound>-chromatograms comp)
-        (set-<chromatogram>-compound! chrom comp)))))
+(define-memoized (get-compound-names batch)
+  (map <compound-method>-name (get-comp-meths batch)))
+
 
 
 ;; rules engine
@@ -104,18 +101,31 @@
             (run (append flags fs) (append results annotated-rules) (cdr rules))))))
   (run '() '() rules))
 
+(define (load-batch)
+  (load "/home/pwinton/git/rules/batch.rkt")
+  (connect-parents the-batch))
+
+(define (connect-parents batch)
+  (foreach samp in (<batch>-samples batch)
+    (set-<sample>-batch! samp batch)
+    (foreach comp in (<sample>-compounds samp)
+      (set-<compound>-sample! comp samp)
+      (foreach chrom in (<compound>-chromatograms comp)
+        (set-<chromatogram>-compound! chrom comp)))))
 
 ;; rules
 
 (define (mean-peak-area batch read-result)
-  (let ([comp-names (map <compound-method>-name (get-comp-meths batch))])
-    (let ([results (map cons comp-names
-                        (pipe-each comp-names
-                          (~> get-comp-instances batch)
-                          (~> filter standard-compound?)
-                          (~> map get-quant-chroms)
-                          flatten
-                          (~> map <chromatogram>-peak-area)
-                          mean))])
-      (values 'mean-peak-area '() results))))
-        
+  (let ([results
+         (pipe-each comp-name in (get-compound-names batch)
+           (~> get-comp-instances batch)
+           (~> filter standard-compound?)
+           (~> map get-quant-chroms)
+           flatten
+           (~> map <chromatogram>-peak-area)
+           mean
+           (~> cons comp-name))])
+    (values 'mean-peak-area '() results)))
+
+
+
